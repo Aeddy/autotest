@@ -4,10 +4,7 @@ import com.alibaba.fastjson2.JSONObject;
 import constants.BusinessConstants;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
-import utils.DiffHandleUtils;
-import utils.DownloadUtil;
-import utils.FolderCompareUtil;
-import utils.LinuxCommandUnzipUtil;
+import utils.*;
 import vo.ContentDiffVo;
 
 import java.io.IOException;
@@ -26,11 +23,12 @@ public class PackageFileDiffServer {
 
     /**
      * 获取文件对比差异
-     * @param serviceName 服务名
-     * @param sourceFileRouter 资源文件路径
      *
-     * 注：文件对比差异优先查询是否存在这个对比差异文件，如果存在那就直接读取文件返回；
-     * 否则需要调用diffString算法实现文件内容差异对比功能
+     * @param serviceName      服务名
+     * @param sourceFileRouter 资源文件路径
+     *                         <p>
+     *                         注：文件对比差异优先查询是否存在这个对比差异文件，如果存在那就直接读取文件返回；
+     *                         否则需要调用diffString算法实现文件内容差异对比功能
      */
     public static void contentDiffDetail(String serviceName, String sourceFileRouter) {
         try {
@@ -54,11 +52,10 @@ public class PackageFileDiffServer {
     }
 
     /**
-     *
      * @param sourceName 源资源名称
-     * @param sourceUrl 源资源路径
+     * @param sourceUrl  源资源路径
      * @param targetName 目标资源名称
-     * @param targetUrl 目标资源路径
+     * @param targetUrl  目标资源路径
      * @return 资源差异对比文件结果列表
      * @throws IOException io异常
      */
@@ -87,11 +84,10 @@ public class PackageFileDiffServer {
     }
 
     /**
-     *
      * @param sourceName 源资源名称
-     * @param sourceUrl 源资源路径
+     * @param sourceUrl  源资源路径
      * @param targetName 目标资源名称
-     * @param targetUrl 目标资源路径
+     * @param targetUrl  目标资源路径
      * @return 资源差异对比文件结果列表
      * @throws IOException io异常
      */
@@ -134,11 +130,15 @@ public class PackageFileDiffServer {
             String downloadUrl = j.getString("url");
             String filename = j.getString("filename");
             String saveDir = j.getString("saveDir");
-            //下载img文件
-            downloadImg(downloadUrl, filename, saveDir);
+            //下载zip文件
+            downloadZip(downloadUrl, filename, saveDir);
+            //解压zip文件到指定目录
             try {
                 //解压android img文件
-                decomAndroidImg(saveDir, filename);
+                String folder = filename.substring(0, filename.length() - 4);
+                //文件名是啥 img是否有规律可循
+                String imgFile = FindFolderFileUti.searchFiles(folder, ".img");
+                decomAndroidImg(folder, imgFile);
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -146,14 +146,27 @@ public class PackageFileDiffServer {
     }
 
 
-    private static void downloadImg(String urlStr, String filename, String saveDir) {
+    private static void downloadZip(String urlStr, String filename, String saveDir) {
         try {
-            log.info("开始下载压缩包img, fileName:{}, url:{}", filename, urlStr);
+            log.info("开始下载压缩包zip, fileName:{}, url:{}", filename, urlStr);
             DownloadUtil.downloadByUrl(urlStr, saveDir, filename);
-            log.info("下载img完成, fileName:{}, url:{}", filename, urlStr);
+            log.info("下载zip完成, fileName:{}, url:{}", filename, urlStr);
         } catch (IOException e) {
             e.printStackTrace();
-            log.info("下载img失败, fileName:{}, url:{}", filename, urlStr);
+            log.info("下载zip失败, fileName:{}, url:{}", filename, urlStr);
+        }
+    }
+
+    private static void unzip(String urlStr, String filename, String saveDir) {
+        try {
+            log.info("开始解压zip, fileName:{}, url:{}", filename, urlStr);
+            String unzipRoot = saveDir;
+            String command = "unzip -d " + saveDir + " " + filename;
+            LinuxCommandUnzipUtil.runCommand(command);
+            log.info("解压zip完成, fileName:{}, url:{}", filename, urlStr);
+        } catch (Exception e) {
+            e.printStackTrace();
+            log.info("解压zip失败, fileName:{}, url:{}", filename, urlStr);
         }
     }
 
@@ -184,6 +197,25 @@ public class PackageFileDiffServer {
         String afterDecomName = "cota_pkg";
         String command2 = "sh" + BusinessConstants.DECOM_UTIL_BIN + "erofs_unpack.sh"
                 + dir + filename + " " + directory1 + afterDecomName;
+        //执行erofs_unpack.sh
+        LinuxCommandUnzipUtil.runCommand(command2);
+    }
+
+    private static void decomAndroidImg2(String dir, String imgFilePath) throws Exception {
+
+        log.info("开始复制android img文件 imgFilePath:{}", imgFilePath);
+        String[] filenames = imgFilePath.split("\\.");
+        String fileNameRaw = filenames[0] + "_raw" + filenames[1];
+        String command1 = "simg2img" + imgFilePath + " " + dir + fileNameRaw;
+        //执行simg2img
+        LinuxCommandUnzipUtil.runCommand(command1);
+
+        log.info("开始解压android img文件 filePath:{}", dir + fileNameRaw);
+
+        String directory1 = "anythingaaa";
+        String afterDecomName = "cota_pkg";
+        String command2 = "sh" + BusinessConstants.DECOM_UTIL_BIN + "erofs_unpack.sh"
+                + dir + fileNameRaw + " " + directory1 + afterDecomName;
         //执行erofs_unpack.sh
         LinuxCommandUnzipUtil.runCommand(command2);
     }
