@@ -5,13 +5,13 @@ import constants.BusinessConstants;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import utils.*;
+import vo.ContentDiffListVo;
 import vo.ContentDiffVo;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * @description:
@@ -59,28 +59,41 @@ public class PackageFileDiffServer {
      * @return 资源差异对比文件结果列表
      * @throws IOException io异常
      */
-    public static Map<String, Object> contentDiffList(String sourceName, String sourceUrl, String targetName, String targetUrl) throws IOException {
+    public static ContentDiffListVo contentDiffList(String sourceName, String sourceUrl, String targetName, String targetUrl) throws IOException {
 
         JSONObject jsonObjectSource = new JSONObject();
         jsonObjectSource.put("saveDir", BusinessConstants.SOURCE_DIR);
-        String filenameSource = jsonObjectSource.getString("url")
-                .split("\\\\")[jsonObjectSource.getString("url").split("\\\\").length - 1];
-        jsonObjectSource.put("filename", filenameSource);
+        jsonObjectSource.put("filename", sourceName);
+        jsonObjectSource.put("url", sourceUrl);
 
         JSONObject jsonObjectTarget = new JSONObject();
         jsonObjectTarget.put("saveDir", BusinessConstants.TARGET_DIR);
-        String filenameTarget = jsonObjectTarget.getString("url")
-                .split("\\\\")[jsonObjectTarget.getString("url").split("\\\\").length - 1];
-        jsonObjectTarget.put("filename", filenameTarget);
+        jsonObjectTarget.put("filename", targetName);
+        jsonObjectTarget.put("url", targetUrl);
 
         List<JSONObject> jsonObjects = new ArrayList<>(2);
         jsonObjects.add(jsonObjectSource);
         jsonObjects.add(jsonObjectTarget);
 
         //对比文件差异前序工作（下载压缩文件包、执行simg2img、执行erofs_unpack.sh）
-        beforeDiff(jsonObjects);
+        String sourceCotaPkgPath = beforeDiff(jsonObjects);
+        String targetCotaPkgPath = beforeDiff(jsonObjects);
+
         //获取资源包差异列表
-        return contentDiffList();
+        List<ContentDiffVo> contentDiffVos = contentDiffList2(sourceName, sourceCotaPkgPath, targetName, targetCotaPkgPath);
+
+        //执行入库获取diff_list id
+        int diffListId = 1;
+        //执行文件对比差异详情
+        //diff 算法分析
+
+        ContentDiffListVo contentDiffListVo = ContentDiffListVo.builder().diffListId(diffListId).sourceName(sourceName).targeName(targetName).contentDiffVos(contentDiffVos).build();
+        if (CollectionUtils.isEmpty(contentDiffVos)) {
+            contentDiffListVo.setTotalNum(0);
+        } else {
+            contentDiffListVo.setTotalNum(contentDiffVos.size());
+        }
+        return contentDiffListVo;
     }
 
     /**
@@ -103,19 +116,14 @@ public class PackageFileDiffServer {
      * @return 文件差异列表（后续包装成ResultVo）
      * @throws IOException io异常
      */
-    private static Map<String, Object> contentDiffList() throws IOException {
-        Map<String, Object> map = new HashMap<>(2);
-        List<ContentDiffVo> contentDiffList = FolderCompareUtil.contentDiffList();
-        int totalNum = 0;
+    private static List<ContentDiffVo> contentDiffList2(String sourceName, String sourceUrl, String targetName, String targetUrl) throws IOException {
+        List<ContentDiffVo> contentDiffList = FolderCompareUtil.contentDiffList(sourceName, sourceUrl, targetName, targetUrl);
         if (!CollectionUtils.isEmpty(contentDiffList)) {
-            totalNum = contentDiffList.size();
             contentDiffList.forEach(c -> {
                 c.setFilename(c.getFilename().replace("\\", "/"));
             });
-            map.put("contentDiffList", contentDiffList);
-            map.put("TotalNum", totalNum);
         }
-        return map;
+        return contentDiffList;
     }
 
 
@@ -124,8 +132,9 @@ public class PackageFileDiffServer {
      *
      * @param jsonObjects 对比入参集合
      */
-    private static void beforeDiff(List<JSONObject> jsonObjects) {
+    private static String beforeDiff(List<JSONObject> jsonObjects) {
 
+        AtomicReference<String> cotaPkgPath = new AtomicReference<>("");
         jsonObjects.forEach(j -> {
             String downloadUrl = j.getString("url");
             String filename = j.getString("filename");
@@ -133,16 +142,19 @@ public class PackageFileDiffServer {
             //下载zip文件
             downloadZip(downloadUrl, filename, saveDir);
             //解压zip文件到指定目录
+            unzip(downloadUrl, filename, saveDir);
             try {
                 //解压android img文件
                 String folder = filename.substring(0, filename.length() - 4);
                 //文件名是啥 img是否有规律可循
                 String imgFile = FindFolderFileUti.searchFiles(folder, ".img");
-                decomAndroidImg(folder, imgFile);
+                cotaPkgPath.set(decomAndroidImg2(folder, imgFile));
             } catch (Exception e) {
                 e.printStackTrace();
             }
         });
+
+        return cotaPkgPath.get();
     }
 
 
@@ -201,7 +213,7 @@ public class PackageFileDiffServer {
         LinuxCommandUnzipUtil.runCommand(command2);
     }
 
-    private static void decomAndroidImg2(String dir, String imgFilePath) throws Exception {
+    private static String decomAndroidImg2(String dir, String imgFilePath) throws Exception {
 
         log.info("开始复制android img文件 imgFilePath:{}", imgFilePath);
         String[] filenames = imgFilePath.split("\\.");
@@ -218,6 +230,8 @@ public class PackageFileDiffServer {
                 + dir + fileNameRaw + " " + directory1 + afterDecomName;
         //执行erofs_unpack.sh
         LinuxCommandUnzipUtil.runCommand(command2);
+
+        return dir + "/" + "cota_pkg";
     }
 
 }

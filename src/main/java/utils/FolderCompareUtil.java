@@ -1,7 +1,6 @@
 package utils;
 
 import com.alibaba.fastjson2.JSON;
-import constants.BusinessConstants;
 import model.FileModel;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.util.DigestUtils;
@@ -87,10 +86,7 @@ public class FolderCompareUtil {
         return list;
     }
 
-    public static List<ContentDiffVo> contentDiffList() throws IOException {
-
-        String path1 = BusinessConstants.FILE_ADDR_PREFIX + "scaffold\\source\\rarrar";
-        String path2 = BusinessConstants.FILE_ADDR_PREFIX + "scaffold\\target\\rarrar";
+    public static List<ContentDiffVo> contentDiffList(String sourceName, String path1, String targetName, String path2) throws IOException {
 
         List<String> names = new ArrayList<>(2);
         names.add(path1.split("\\\\")[path1.split("\\\\").length - 1]);
@@ -118,20 +114,19 @@ public class FolderCompareUtil {
         for (FileModel fileModel : resultList) {
             System.out.println(fileModel.getFile().getAbsolutePath() + " " + fileModel.getMd5());
             if (fileModel.getFile().getAbsolutePath().contains("source")) {
-                sourceMap.put(fileModel.getFile().getAbsolutePath(), fileModel.getMd5());
+                sourceMap.put(fileModel.getFile().getAbsolutePath().split("cota_pkg")[1], fileModel.getMd5());
             } else if (fileModel.getFile().getAbsolutePath().contains("target")) {
-                targetMap.put(fileModel.getFile().getAbsolutePath(), fileModel.getMd5());
+                targetMap.put(fileModel.getFile().getAbsolutePath().split("cota_pkg")[1], fileModel.getMd5());
             }
         }
         System.out.println("源文件map:" + JSON.toJSONString(sourceMap));
         System.out.println("目标文件map:" + JSON.toJSONString(targetMap));
         sourceMap.forEach((k, v) -> {
-            String tarKey = k.replace("source", "target");
-            if (targetMap.containsKey(tarKey)) {
-                if (!v.equals(targetMap.get(tarKey))) {
+            if (targetMap.containsKey(k)) {
+                if (!v.equals(targetMap.get(k))) {
                     resultMap.put(k, true);
                     //获取文件相对目录
-                    String fileNameOx = "\\" + names.get(0) + "\\" + k.split("\\\\" + names.get(0) + "\\\\")[1];
+                    String fileNameOx = "/" + sourceName + "/" + "cota_pkg/" + v;
                     ContentDiffVo contentDiffVo = ContentDiffVo.builder().filename(fileNameOx).build();
                     contentDiffList.add(contentDiffVo);
                 } else {
@@ -140,7 +135,7 @@ public class FolderCompareUtil {
             } else if (!StringUtils.isEmpty(v)) {
                 resultMap.put(k, true);
                 //获取文件相对目录
-                String fileNameOx = "\\" + names.get(0) + "\\" + k.split("\\\\" + names.get(0) + "\\\\")[1];
+                String fileNameOx = "/" + sourceName + "/" + "cota_pkg/" + v;
                 ContentDiffVo contentDiffVo = ContentDiffVo.builder().filename(fileNameOx).build();
                 contentDiffList.add(contentDiffVo);
             }
